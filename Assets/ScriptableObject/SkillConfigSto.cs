@@ -22,4 +22,9 @@ public class SkillConfigSto : ScriptableObject
     public bool castFacingDir; // 面向施法方向
     public bool isRotateWhenCast; // 施法时可转向
     public bool isMoveWhenCast; // 施法时可移动
+
+    public string selectedAnimationName;
+    public List<Global.TransitionCondition> transitionConditionsList = new List<Global.TransitionCondition>();
+
+    public string modelName;
 }

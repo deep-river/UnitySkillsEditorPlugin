@@ -2,6 +2,8 @@ using UnityEditor;
 using UnityEngine;
 using System.IO;
 using System.Linq;
+using NUnit.Framework;
+using System.Collections.Generic;
 
 public class SkillEditorWindow : EditorWindow
 {
@@ -79,6 +81,16 @@ public class SkillEditorWindow : EditorWindow
     private Vector2 scrollView = new Vector2(0, 0);
     int frameIndex;
     float frameTimeFloat;
+
+    string selectedAnimationName;
+    string[] executionsArray = new string[]
+    {
+        "攻击",
+        "移动"
+    };
+    List<Global.TransitionCondition> transitionConditionsList = new List<Global.TransitionCondition>();
+
+
 
     [MenuItem("工具箱/技能编辑器")]
     static void Open()
@@ -185,8 +197,84 @@ public class SkillEditorWindow : EditorWindow
         {
             var clips = animator.runtimeAnimatorController.animationClips;
             animationIndex = Mathf.Clamp(animationIndex, 0, clips.Length);
+
+            EditorGUILayout.BeginHorizontal();
+
             string[] clipNamesArray = clips.Select(t => t.name).ToArray();
             animationIndex = EditorGUILayout.Popup("动画片段", animationIndex, clipNamesArray);
+
+            if (GUILayout.Button("添加动画", GUILayout.Width(80)))
+            {
+                if (selectedAnimationName == "" || selectedAnimationName == null)
+                {
+                    selectedAnimationName = clipNamesArray[animationIndex];
+                }
+                else
+                {
+                    selectedAnimationName += "|" + clipNamesArray[animationIndex];
+                }
+            }
+            if (GUILayout.Button("撤销动画", GUILayout.Width(80)))
+            {
+                if (selectedAnimationName != null && selectedAnimationName.Length > 0)
+                {
+                    int pos = selectedAnimationName.LastIndexOf("|");
+                    if (pos > -1)
+                    {
+                        selectedAnimationName = selectedAnimationName.Substring(0, pos);
+                    }
+                    else
+                    {
+                        selectedAnimationName = "";
+                    }
+                }
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.LabelField("使用动画片段", selectedAnimationName, GUIStyles.textField);
+
+            if (GUILayout.Button("添加跳转条件", GUILayout.Width(200)))
+            {
+                Global.TransitionCondition transitionCondition= new Global.TransitionCondition();
+                transitionConditionsList.Add(transitionCondition);
+            }
+
+            for (int i = 0; i < transitionConditionsList.Count; i++)
+            {
+                EditorGUILayout.BeginHorizontal();
+
+                if (GUILayout.Button("删除", GUILayout.Width(40)))
+                {
+                    transitionConditionsList.RemoveAt(i);
+                }
+
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("跳转目标动画"));
+                transitionConditionsList[i].targetAnimation = EditorGUILayout.Popup("跳转目标动画", transitionConditionsList[i].targetAnimation, clipNamesArray, GUILayout.MaxWidth(150));
+                AnimationClip clip_ = clips[transitionConditionsList[i].targetAnimation];
+                int animFrames = (int)(clip_.length * clip_.frameRate);
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("  开始帧"));
+                transitionConditionsList[i].beginAtFrame = EditorGUILayout.IntField("  开始帧", transitionConditionsList[i].beginAtFrame, GUILayout.MaxWidth(150));
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("  结束帧"));
+                transitionConditionsList[i].endAtFrame = EditorGUILayout.IntField("  结束帧", transitionConditionsList[i].endAtFrame, GUILayout.MaxWidth(150));
+
+                transitionConditionsList[i].beginAtFrame = Mathf.Clamp(transitionConditionsList[i].beginAtFrame, 0, animFrames - 1);
+                transitionConditionsList[i].endAtFrame = Mathf.Clamp(transitionConditionsList[i].endAtFrame, 0, animFrames - 1);
+                if (transitionConditionsList[i].endAtFrame < transitionConditionsList[i].beginAtFrame)
+                {
+                    transitionConditionsList[i].endAtFrame = transitionConditionsList[i].beginAtFrame;
+                }
+                if (GUILayout.Button("添加输入", GUILayout.Width(60)))
+                {
+                    transitionConditionsList[i].executions.Add(0);
+                }
+                for (int j = 0; j < transitionConditionsList[i].executions.Count; j++)
+                {
+                    transitionConditionsList[i].executions[j] = EditorGUILayout.Popup("选择操作", transitionConditionsList[i].executions[j], executionsArray, GUILayout.MaxWidth(150));
+                }
+
+                EditorGUILayout.EndHorizontal();
+            }
 
             AnimationClip clip = clips[animationIndex];
             // 拖动slider在Scene窗口预览动画帧
@@ -254,6 +342,24 @@ public class SkillEditorWindow : EditorWindow
         castFacingDir = configFile.castFacingDir;
         isRotateWhenCast = configFile.isRotateWhenCast;
         isMoveWhenCast = configFile.isMoveWhenCast;
+
+        selectedAnimationName = configFile.selectedAnimationName;
+        transitionConditionsList = configFile.transitionConditionsList;
+        GameObject model_ = GameObject.Find(configFile.modelName);
+        if (model_ == null)
+        {
+            // search in Resource folder
+        }
+        else
+        {
+            model = model_;
+            animator = model.GetComponent<Animator>();
+            if (animator == null)
+            {
+                Debug.LogError("模型未绑定Animator组件");
+                return;
+            }
+        }
     }
 
     // 保存技能配置
@@ -287,6 +393,16 @@ public class SkillEditorWindow : EditorWindow
         configFile.castFacingDir = castFacingDir;
         configFile.isRotateWhenCast = isRotateWhenCast;
         configFile.isMoveWhenCast = isMoveWhenCast;
+
+        configFile.selectedAnimationName = selectedAnimationName;
+        configFile.transitionConditionsList = transitionConditionsList;
+        configFile.modelName = model.name;
+    }
+
+    // 计算插件子区域显示宽度
+    public static float calcLabelWidth(GUIContent label)
+    {
+        return GUI.skin.label.CalcSize(label).x + EditorGUI.indentLevel * GUI.skin.label.fontSize * 2;
     }
 }
 
@@ -295,4 +411,5 @@ public static class GUIStyles
     public static GUIStyle item_select = "MeTransitionSelectHead";
     public static GUIStyle item_normal = "MeTransitionSelect";
     public static GUIStyle box = "HelpBox";
+    public static GUIStyle textField = "TextField";
 }
