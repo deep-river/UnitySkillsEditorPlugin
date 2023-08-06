@@ -49,6 +49,8 @@ public class SkillEditorWindow : EditorWindow
     };
     public float rangeParam1; // 范围参数1
     public float rangeParam2; // 范围参数2
+    public float offsetX, offsetY, offsetZ;
+
     public int resourceType; // 资源消耗类型
     private string[] resourceTypesArray = new string[]
     {
@@ -89,6 +91,10 @@ public class SkillEditorWindow : EditorWindow
         "移动"
     };
     List<Global.TransitionCondition> transitionConditionsList = new List<Global.TransitionCondition>();
+
+    List<Global.attackDetection> attackDetectionList = new List<Global.attackDetection>();
+    bool isDrawAttackRange = false;
+    bool isOverwriteDetection = false;
 
 
 
@@ -159,9 +165,12 @@ public class SkillEditorWindow : EditorWindow
             resourceAmout = EditorGUILayout.FloatField("资源消耗数量:", resourceAmout);
             coolDownDuration = EditorGUILayout.FloatField("CD时间:", coolDownDuration);
             castDistance = EditorGUILayout.FloatField("施法距离:", castDistance);
-            skillIndicatorType = EditorGUILayout.Popup("技能指示器形状:", skillIndicatorType, skillIndicatorTypesArray);
+            skillIndicatorType = EditorGUILayout.Popup("攻击判定范围形状:", skillIndicatorType, skillIndicatorTypesArray);
             rangeParam1 = EditorGUILayout.FloatField("范围参数1:", rangeParam1);
             rangeParam2 = EditorGUILayout.FloatField("范围参数2:", rangeParam2);
+            offsetX = EditorGUILayout.FloatField("offsetX:", offsetX);
+            offsetY = EditorGUILayout.FloatField("offsetY:", offsetY);
+            offsetZ = EditorGUILayout.FloatField("offsetZ:", offsetZ);
         }
         EditorGUILayout.EndVertical();
 
@@ -276,6 +285,52 @@ public class SkillEditorWindow : EditorWindow
                 EditorGUILayout.EndHorizontal();
             }
 
+            // 攻击判定
+            if (GUILayout.Button("添加攻击判定框", GUILayout.Width(200)))
+            {
+                Global.attackDetection attackDetection = new Global.attackDetection();
+                attackDetection.frameIndex = frameIndex;
+                attackDetectionList.Add(attackDetection);
+            }
+            for (int i = 0; i < attackDetectionList.Count; i++)
+            {
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("删除", GUILayout.Width(40)))
+                {
+                    attackDetectionList.RemoveAt(i);
+                }
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("帧号"));
+                attackDetectionList[i].frameIndex = EditorGUILayout.IntField("帧号", attackDetectionList[i].frameIndex, GUILayout.MaxWidth(70));
+
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("是否重写范围"));
+                attackDetectionList[i].isOverwrite = EditorGUILayout.Toggle("是否重写范围", attackDetectionList[i].isOverwrite, GUILayout.MaxWidth(100));
+
+                if (attackDetectionList[i].isOverwrite)
+                {
+                    EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("判定形状"));
+                    attackDetectionList[i].rangeShape = EditorGUILayout.Popup("判定形状", attackDetectionList[i].rangeShape, skillIndicatorTypesArray, GUILayout.MaxWidth(70));
+
+                    EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("参数1"));
+                    attackDetectionList[i].param1 = EditorGUILayout.FloatField("参数1", attackDetectionList[i].param1, GUILayout.MaxWidth(70));
+
+                    EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("参数2"));
+                    attackDetectionList[i].param2 = EditorGUILayout.FloatField("参数2", attackDetectionList[i].param2, GUILayout.MaxWidth(70));
+
+                    EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("offset:"));
+                    EditorGUILayout.LabelField("offset:", GUILayout.Width(45));
+
+                    EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("X"));
+                    attackDetectionList[i].offset.x = EditorGUILayout.FloatField("X", attackDetectionList[i].offset.x, GUILayout.MaxWidth(45));
+                    EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("Y"));
+                    attackDetectionList[i].offset.y = EditorGUILayout.FloatField("Y", attackDetectionList[i].offset.y, GUILayout.MaxWidth(45));
+                    EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("Z"));
+                    attackDetectionList[i].offset.z = EditorGUILayout.FloatField("Z", attackDetectionList[i].offset.z, GUILayout.MaxWidth(45));
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+
+
+
             AnimationClip clip = clips[animationIndex];
             // 拖动slider在Scene窗口预览动画帧
             // clip.SampleAnimation(animator.gameObject, frameTimeFloat);
@@ -302,16 +357,69 @@ public class SkillEditorWindow : EditorWindow
         for (int i = 0; i < frameCount; i++)
         {
             bool selected = frameIndex == i;
-            string title = "" + i;
+            // string title = "" + i;
+            int id = GetFrameIndexInAttackDetectionList(i);
+            string title = string.Format("{0}\n{1}", i, IsFrameHasAttackDetection(id)? "□" : "");
+
             if (GUILayout.Button(title, selected?GUIStyles.item_select:GUIStyles.item_normal, GUILayout.Width(frameViewWidth)))
             {
                 frameIndex = selected ? -1 : i;
             }
             currentFrame = frameIndex / clip.frameRate;
         }
+        int index = GetFrameIndexInAttackDetectionList(frameIndex);
+        if (IsFrameHasAttackDetection(index))
+        {
+            isDrawAttackRange = true;
+        }
+        else
+        {
+            isDrawAttackRange = false;
+        }
+
+        if (IsFrameOverwriteAttackDetection(index))
+        {
+            isOverwriteDetection = true;
+        }
+        else
+        {
+            isOverwriteDetection = false;
+        }
 
         EditorGUILayout.EndHorizontal();
         EditorGUILayout.EndScrollView();
+    }
+
+    int GetFrameIndexInAttackDetectionList(int num)
+    {
+        int id = 0;
+        foreach (var t in attackDetectionList)
+        {
+            if (t.frameIndex == num)
+            {
+                return id;
+            }
+            ++id;
+        }
+        return -1;
+    }
+
+    bool IsFrameHasAttackDetection(int num)
+    {
+        if (attackDetectionList.Count - 1 >= num && num >= 0)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    bool IsFrameOverwriteAttackDetection(int num)
+    {
+        if (IsFrameHasAttackDetection(num))
+        {
+            return attackDetectionList[num].isOverwrite;
+        }
+        return false;
     }
 
     // 载入技能配置

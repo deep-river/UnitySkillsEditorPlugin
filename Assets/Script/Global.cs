@@ -12,4 +12,14 @@ public class Global
         public int endAtFrame;
         public List<int> executions = new List<int>();
     }
+
+    public class attackDetection
+    {
+        public int frameIndex;
+        public bool isOverwrite;
+        public int rangeShape;
+        public float param1;
+        public float param2;
+        public Vector3 offset;
+    }
 }

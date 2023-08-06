@@ -25,6 +25,5 @@ public class SkillConfigSto : ScriptableObject
 
     public string selectedAnimationName;
     public List<Global.TransitionCondition> transitionConditionsList = new List<Global.TransitionCondition>();
-
     public string modelName;
 }
