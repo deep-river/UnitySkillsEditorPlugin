@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using System.Collections.Generic;
+using UnityEditor.IMGUI.Controls;
+using System;
 
 public class SkillEditorWindow : EditorWindow
 {
@@ -96,6 +98,13 @@ public class SkillEditorWindow : EditorWindow
     bool isDrawAttackRange = false;
     bool isOverwriteDetection = false;
 
+    attackDetection.IDetectionRange IDetectionRange = null;
+    DetectionInfo detectionInfo = new DetectionInfo();
+    BoxBoundsHandle boxHandle = new BoxBoundsHandle();
+    SphereBoundsHandle sphereHandle = new SphereBoundsHandle();
+    attackDetection.BoxItem boxItem = new attackDetection.BoxItem();
+    attackDetection.SphereItem sphereItem = new attackDetection.SphereItem();
+
 
 
     [MenuItem("工具箱/技能编辑器")]
@@ -103,6 +112,205 @@ public class SkillEditorWindow : EditorWindow
     {
         SkillEditorWindow window = (SkillEditorWindow)GetWindow(typeof(SkillEditorWindow));
         window.Show();
+    }
+
+    private void OnEnable()
+    {
+        SceneView.duringSceneGui += OnSceneGUI;
+    }
+
+    private void OnDisable()
+    {
+        SceneView.duringSceneGui -= OnSceneGUI;
+    }
+
+    void OnSceneGUI(SceneView sceneView)
+    {
+        OnSceneGUI();
+        sceneView.Repaint();
+        Repaint();
+    }
+
+    void OnSceneGUI()
+    {
+        if (isDrawAttackRange)
+        {
+            DrawAttackRange();
+        }
+    }
+
+    void DrawAttackRange()
+    {
+        if (!isOverwriteDetection)
+        {
+            switch (skillIndicatorType)
+            {
+                case 1:
+                    IDetectionRange = boxItem;
+                    IDetectionRange.SetValue(rangeParam1, 1, rangeParam2, offsetX, offsetY, offsetZ);
+                    break;
+                case 0:
+                    IDetectionRange = sphereItem;
+                    IDetectionRange.SetValue(rangeParam1, 0, 0, offsetX, offsetY, offsetZ);
+                    break;
+            }
+        }
+        else
+        {
+            int index = GetFrameIndexInAttackDetectionList(frameIndex);
+            if (index >= 0)
+            {
+                switch(attackDetectionList[index].rangeShape)
+                {
+                    case 1:
+                        IDetectionRange = boxItem;
+                        IDetectionRange.SetValue(attackDetectionList[index].param1, 1, attackDetectionList[index].param2, attackDetectionList[index].offset.x, attackDetectionList[index].offset.y, attackDetectionList[index].offset.z);
+                        break;
+                    case 0:
+                        IDetectionRange = sphereItem;
+                        IDetectionRange.SetValue(attackDetectionList[index].param1, 0, 0, attackDetectionList[index].offset.x, attackDetectionList[index].offset.y, attackDetectionList[index].offset.z);
+                        break;
+                }
+            }
+        }
+        detectionInfo.value = IDetectionRange;
+        Matrix4x4 localToWorld = model.transform.localToWorldMatrix;
+        DrawDetectionRange(detectionInfo, localToWorld, new Color(1, 0, 0, 0.25f));
+    }
+
+    void DrawDetectionRange(DetectionInfo detectionInfo, Matrix4x4 localToWorld, Color color)
+    {
+        Matrix4x4 temp = Matrix4x4.TRS(localToWorld.MultiplyPoint3x4(Vector3.zero), localToWorld.rotation, Vector3.one);
+        Handles.matrix = temp;
+        DrawRange(detectionInfo, color);
+        DrawHandler(detectionInfo.value);
+    }
+
+    void DrawRange(DetectionInfo config, Color color)
+    {
+        DrawHandles.H.PushColor(color);
+        DrawHandles.H.isFillVolume = true;
+        switch (config.value)
+        {
+            case attackDetection.BoxItem v:
+                DrawHandles.H.DrawBox(v.size, Matrix4x4.Translate(v.offset));
+                break;
+            case attackDetection.SphereItem v:
+                DrawHandles.H.DrawSphere(v.radius, Matrix4x4.Translate(v.offset));
+                break;
+        }
+        DrawHandles.H.isFillVolume = false;
+        DrawHandles.H.PopColor();
+    }
+
+    void DrawHandler(attackDetection.IDetectionRange config)
+    {
+        Vector3 offset = Vector3.zero;
+        Vector3 size = Vector3.one;
+
+        switch (config)
+        {
+            case attackDetection.BoxItem v:
+                offset = v.offset;
+                size = v.size;
+                break;
+            case attackDetection.SphereItem v:
+                offset = v.offset;
+                size = new Vector2(v.radius, 0);
+                break;
+        }
+        float handlerSize = HandleUtility.GetHandleSize(offset);
+        switch (Tools.current)
+        {
+            case Tool.View:
+                break;
+            case Tool.Move:
+                offset = Handles.DoPositionHandle(offset, Quaternion.identity);
+                break;
+            case Tool.Scale:
+                size = Handles.DoScaleHandle(size, offset, Quaternion.identity, handlerSize);
+                break;
+            case Tool.Transform:
+                Vector3 _offset = size;
+                Vector3 _size = size;
+                Handles.TransformHandle(ref _offset, Quaternion.identity, ref _size);
+                offset = _offset; 
+                size = _size; 
+                break;
+            case Tool.Rect:
+                switch (config)
+                {
+                    case attackDetection.BoxItem v:
+                        boxHandle.axes = PrimitiveBoundsHandle.Axes.X | PrimitiveBoundsHandle.Axes.Y | PrimitiveBoundsHandle.Axes.Z;
+                        boxHandle.center = offset;
+                        boxHandle.size = size;
+                        boxHandle.DrawHandle();
+                        offset = boxHandle.center;
+                        size = boxHandle.size;
+                        break;
+                    case attackDetection.SphereItem v:
+                        sphereHandle.axes = PrimitiveBoundsHandle.Axes.X | PrimitiveBoundsHandle.Axes.Y | PrimitiveBoundsHandle.Axes.Z;
+                        sphereHandle.center = offset;
+                        sphereHandle.radius = size.x;
+                        sphereHandle.DrawHandle();
+                        offset = sphereHandle.center;
+                        size.x = sphereHandle.radius;
+                        break;
+                }
+                break;
+        }
+        Func<Vector3> getOffset = () => new Vector3(offset.x, offset.y, offset.z);
+        Func<Vector3> getSize = () => new Vector3(size.x, size.y, size.z);
+        Func<float> getRadius = () => size.magnitude;
+        switch (config)
+        {
+            case attackDetection.BoxItem v:
+                v.offset = getOffset();
+                v.size = getSize();
+                if (!isOverwriteDetection)
+                {
+                    offsetX = v.offset.x;
+                    offsetY = v.offset.y;
+                    offsetZ = v.offset.z;
+                    rangeParam1 = v.size.x;
+                    rangeParam2 = v.size.z;
+                }
+                else
+                {
+                    int index = GetFrameIndexInAttackDetectionList(frameIndex);
+                    if (index > 0)
+                    {
+                        attackDetectionList[index].offset.x = v.offset.x;
+                        attackDetectionList[index].offset.y = v.offset.y;
+                        attackDetectionList[index].offset.z = v.offset.z;
+                        attackDetectionList[index].param1 = v.size.x;
+                        attackDetectionList[index].param2 = v.size.z; 
+                    }
+                }
+                break;
+            case attackDetection.SphereItem v: 
+                v.offset = getOffset();
+                v.radius = getRadius();
+                if (!isOverwriteDetection)
+                {
+                    offsetX = v.offset.x;
+                    offsetY = v.offset.y;
+                    offsetZ = v.offset.z;
+                    rangeParam1 = v.radius;
+                }
+                else
+                {
+                    int index = GetFrameIndexInAttackDetectionList(frameIndex);
+                    if (index > 0)
+                    {
+                        attackDetectionList[index].offset.x = v.offset.x;
+                        attackDetectionList[index].offset.y = v.offset.y;
+                        attackDetectionList[index].offset.z = v.offset.z;
+                        attackDetectionList[index].param1 = v.radius;
+                    }
+                }
+                break;
+        }
     }
 
     private void OnGUI()
@@ -520,4 +728,225 @@ public static class GUIStyles
     public static GUIStyle item_normal = "MeTransitionSelect";
     public static GUIStyle box = "HelpBox";
     public static GUIStyle textField = "TextField";
+}
+
+public class DetectionInfo
+{
+    public attackDetection.IDetectionRange value;
+}
+
+namespace attackDetection
+{
+    public interface IDetectionRange
+    {
+        public void SetValue(float a1, float a2, float a3, float x, float y, float z);
+    }
+
+    public class BoxItem : IDetectionRange
+    {
+        public Vector3 offset = Vector3.zero;
+        public Vector3 size = Vector3.one;
+
+        public void SetValue(float a1, float a2, float a3, float x, float y, float z)
+        {
+            this.size.x = a1;
+            this.size.y = a2;
+            this.size.z = a3;
+            this.offset.x = x;
+            this.offset.y = y;
+            this.offset.z = z;
+        }
+    }
+
+    public class SphereItem : IDetectionRange
+    {
+        public Vector3 offset = Vector3.zero;
+        public float radius = 1;
+
+        public void SetValue(float a1, float a2, float a3, float x, float y, float z)
+        {
+            this.radius = a1;
+            this.offset.x = x;
+            this.offset.y = y;
+            this.offset.z = z;
+        }
+    }
+}
+
+public class DrawHandles : DrawTool
+{
+    public static DrawHandles H = new DrawHandles();
+
+    public override Color color { get => Handles.color; set => Handles.color = value; }
+
+    public override void DrawLine(Vector3 start, Vector3 end)
+    {
+        Handles.DrawLine(start, end);
+    }
+
+    protected override void FillPolygon(Vector3[] vertices)
+    {
+        Handles.DrawAAConvexPolygon(vertices);
+    }
+}
+
+public abstract class DrawTool
+{
+    public static Color defaultColor = Color.white;
+    public abstract void DrawLine(Vector3 start, Vector3 end);
+    public virtual Color color { get; set; }
+    public Color outlineColor => new Color(1, 1, 1, color.a);
+    public int sphereCutPrecision = 30; // 球体切割精度
+    public bool isFillVolume = false; // 是否绘制填充体积
+    public bool isDrawOutline = false; // 是否绘制线框
+    Stack<Color> _colorStack = new Stack<Color>();
+
+    public void PushColor(Color color)
+    {
+        _colorStack.Push(this.color);
+        this.color = color;
+    }
+
+    public void PopColor()
+    {
+        this.color = _colorStack.Count > 0 ? _colorStack.Pop() : defaultColor;
+    }
+
+    public void DrawPolygon(Vector3[] vertices)
+    {
+        if (isFillVolume)
+        {
+            FillPolygon(vertices);
+            if (isDrawOutline)
+            {
+                PushColor(outlineColor);
+                for (int i = vertices.Length - 1, j = 0; j < vertices.Length; i = j, j++)
+                {
+                    DrawLine(vertices[i], vertices[j]);
+                }
+                PopColor();
+            }
+        }
+        else
+        {
+            for (int i = vertices.Length - 1, j = 0; j < vertices.Length; i = j, j++)
+            {
+                DrawLine(vertices[i], vertices[j]);
+            }
+        }
+    }
+
+    protected virtual void FillPolygon(Vector3[] vertices)
+    {
+        for (int i = vertices.Length - 1, j = 0; j < vertices.Length; i = j, j++)
+        {
+            DrawLine(vertices[i], vertices[j]);
+        }
+    }
+
+    public void DrawBox(Vector3 size, Matrix4x4 matrix)
+    {
+        Vector3[] points = MathUtility.CalcBoxVertex(size, matrix);
+        int[] indexes = MathUtility.GetBoxSurfaceVertices();
+        for (int i = 0; i < 6; i++)
+        {
+            Vector3[] polygon = new Vector3[]
+            {
+                points[indexes[i * 4]],
+                points[indexes[i * 4 + 1]],
+                points[indexes[i * 4 + 2]],
+                points[indexes[i * 4 + 3]],
+            };
+            DrawPolygon(polygon);
+        }
+    }
+
+    public void DrawSphere(float radius, Matrix4x4 matrix)
+    {
+        Matrix4x4 lookMatrix = Matrix4x4.identity;
+        SceneView sceneView = SceneView.currentDrawingSceneView;
+        if (sceneView != null)
+        {
+            Camera cam = sceneView.camera;
+            var cameraTransform = cam.transform;
+            var rotation = Quaternion.LookRotation(cameraTransform.position - matrix.MultiplyPoint(Vector3.zero));
+            lookMatrix = Matrix4x4.TRS(matrix.MultiplyPoint(Vector3.zero), rotation, matrix.lossyScale);
+            DrawCircle(radius, lookMatrix);
+        }
+        bool prevColorFill = isFillVolume;
+        isFillVolume = false;
+        PushColor(outlineColor);
+        DrawCircle(radius, matrix);
+        DrawCircle(radius, matrix * Matrix4x4.Rotate(Quaternion.Euler(0, 90, 0)));
+        DrawCircle(radius, matrix * Matrix4x4.Rotate(Quaternion.Euler(90, 0, 0)));
+        PopColor();
+        isFillVolume = prevColorFill;
+    }
+
+    public void DrawCircle(float radius, Matrix4x4 lookMatrix)
+    {
+        Vector3[] vertices = MathUtility.CalcCircleVertex(radius, lookMatrix, sphereCutPrecision);
+        DrawPolygon(vertices);
+    }
+}
+
+public static class MathUtility
+{
+    public const float PI = Mathf.PI;
+    public static int[] GetBoxSurfaceVertices()
+    {
+        return new int[]
+        {
+            0, 1, 2, 3, // 上面
+            4, 5, 6, 7, // 下面
+            2, 6, 5, 3, // 左面
+            0, 4, 7, 1, // 右面
+            1, 7, 6, 2, // 前面
+            0, 3, 5, 4 // 后面
+        };
+    }
+
+    // 计算长方体的8个顶点
+    public static Vector3[] CalcBoxVertex(Vector3 size)
+    {
+        Vector3 halfSize = size / 2f;
+        Vector3[] points = new Vector3[8];
+        points[0] = new Vector3(halfSize.x, halfSize.y, halfSize.z);
+        points[1] = new Vector3(halfSize.x, halfSize.y, -halfSize.z);
+        points[2] = new Vector3(-halfSize.x, halfSize.y, -halfSize.z);
+        points[3] = new Vector3(-halfSize.x, halfSize.y, halfSize.z);
+
+        points[4] = new Vector3(halfSize.x, -halfSize.y, halfSize.z);
+        points[5] = new Vector3(-halfSize.x, -halfSize.y, halfSize.z);
+        points[6] = new Vector3(-halfSize.x, -halfSize.y, -halfSize.z);
+        points[7] = new Vector3(halfSize.x, -halfSize.y, -halfSize.z);
+
+        return points;
+    }
+
+    public static Vector3[] CalcBoxVertex(Vector3 size, Matrix4x4 matrix)
+    {
+        Vector3[] points = CalcBoxVertex(size);
+        for (int i = 0; i < points.Length; i++)
+        {
+            points[i] = matrix.MultiplyPoint(points[i]);
+        }
+        return points;
+    }
+
+    public static Vector3[] CalcCircleVertex(float radius, Matrix4x4 matrix, int sphereCutPrecision = 30)
+    {
+        float deg = 2 * Mathf.PI;
+        float deltaDeg = deg / sphereCutPrecision;
+        Vector3[] vertices = new Vector3[sphereCutPrecision];
+        for (int i = 0; i < sphereCutPrecision; i++)
+        {
+            Vector2 pos;
+            float d = deg - deltaDeg * i;
+            pos.x = radius * Mathf.Cos(d);
+            pos.y = radius * Mathf.Sin(d);
+            vertices[i] = matrix.MultiplyPoint(pos);
+        }
+        return vertices;
+    }
 }
