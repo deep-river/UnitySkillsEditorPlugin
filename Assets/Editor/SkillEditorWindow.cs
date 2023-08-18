@@ -464,6 +464,14 @@ public class SkillEditorWindow : EditorWindow
                 if (GUILayout.Button("É¾³ý", GUILayout.Width(40)))
                 {
                     transitionConditionsList.RemoveAt(i);
+
+                    if (i != 0)
+                        i -= 1;
+                    else
+                    {
+                        EditorGUILayout.EndHorizontal();
+                        break;
+                    }
                 }
 
                 EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("Ìø×ªÄ¿±ê¶¯»­"));
@@ -506,6 +514,14 @@ public class SkillEditorWindow : EditorWindow
                 if (GUILayout.Button("É¾³ý", GUILayout.Width(40)))
                 {
                     attackDetectionList.RemoveAt(i);
+
+                    if (i != 0)
+                        i -= 1;
+                    else
+                    {
+                        EditorGUILayout.EndHorizontal();
+                        break;
+                    }
                 }
                 EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("Ö¡ºÅ"));
                 attackDetectionList[i].frameIndex = EditorGUILayout.IntField("Ö¡ºÅ", attackDetectionList[i].frameIndex, GUILayout.MaxWidth(70));
