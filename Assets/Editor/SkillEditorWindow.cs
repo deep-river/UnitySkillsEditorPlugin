@@ -6,6 +6,7 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using UnityEditor.IMGUI.Controls;
 using System;
+using System.Xml.Serialization;
 
 public class SkillEditorWindow : EditorWindow
 {
@@ -94,7 +95,7 @@ public class SkillEditorWindow : EditorWindow
     };
     List<Global.TransitionCondition> transitionConditionsList = new List<Global.TransitionCondition>();
 
-    List<Global.attackDetection> attackDetectionList = new List<Global.attackDetection>();
+    List<Global.AttackDetection> attackDetectionList = new List<Global.AttackDetection>();
     bool isDrawAttackRange = false;
     bool isOverwriteDetection = false;
 
@@ -104,6 +105,19 @@ public class SkillEditorWindow : EditorWindow
     SphereBoundsHandle sphereHandle = new SphereBoundsHandle();
     attackDetection.BoxItem boxItem = new attackDetection.BoxItem();
     attackDetection.SphereItem sphereItem = new attackDetection.SphereItem();
+
+    List<Global.FxInfo> fxInfoList = new List<Global.FxInfo>();
+    private ParticleSystem particleFx;
+    float fxPlayTime;
+    double prevFxPlayTime;
+    float fxPlaybackDurationMax = 20;
+    public AudioSource asl;
+    bool playFrame = false;
+    float playTimer;
+    float playSpeed = 0.1f;
+    float frameRate = 0.033f;
+    int lastFrameSelectedIndex;
+    AnimationClip clip;
 
 
 
@@ -116,6 +130,7 @@ public class SkillEditorWindow : EditorWindow
 
     private void OnEnable()
     {
+        asl = Camera.main.GetComponent<AudioSource>();
         SceneView.duringSceneGui += OnSceneGUI;
     }
 
@@ -127,7 +142,58 @@ public class SkillEditorWindow : EditorWindow
     void OnSceneGUI(SceneView sceneView)
     {
         OnSceneGUI();
+        FxUpdate();
+        AniPlayUpdate();
         sceneView.Repaint();
+        Repaint();
+    }
+
+    private void FxPlay()
+    {
+        if (Application.isPlaying || particleFx == null)
+        {
+            return;
+        }
+        fxPlayTime = 0;
+    }
+
+    void FxUpdate()
+    {
+        var delta = EditorApplication.timeSinceStartup - prevFxPlayTime;
+        prevFxPlayTime = EditorApplication.timeSinceStartup;
+        fxPlayTime = Mathf.Clamp(fxPlayTime + (float)delta, 0, fxPlaybackDurationMax);
+        DoFxPlay();
+    }
+
+    private void DoFxPlay()
+    {
+        if (Application.isPlaying || particleFx == null)
+        {
+            return;
+        }
+        particleFx.Simulate(fxPlayTime, true);
+        SceneView.RepaintAll();
+        Repaint();
+    }
+
+    void AniPlayUpdate()
+    {
+        if (!playFrame) return;
+        int maxIndex = (int)(clip.length * clip.frameRate - 1);
+        if (maxIndex < 0) return;
+
+        playTimer += Time.deltaTime * playSpeed;
+        while (playTimer > frameRate)
+        {
+            int index = frameIndex;
+            playTimer -= frameRate;
+            index += 1;
+            if (index >= maxIndex)
+            {
+                index = 0;
+            }
+            frameIndex = index;
+        }
         Repaint();
     }
 
@@ -504,7 +570,7 @@ public class SkillEditorWindow : EditorWindow
             // 攻击判定
             if (GUILayout.Button("添加攻击判定框", GUILayout.Width(200)))
             {
-                Global.attackDetection attackDetection = new Global.attackDetection();
+                Global.AttackDetection attackDetection = new Global.AttackDetection();
                 attackDetection.frameIndex = frameIndex;
                 attackDetectionList.Add(attackDetection);
             }
@@ -553,16 +619,63 @@ public class SkillEditorWindow : EditorWindow
                 EditorGUILayout.EndHorizontal();
             }
 
+            if (GUILayout.Button("添加特效/音效", GUILayout.Width(200)))
+            {
+                Global.FxInfo fxInfo = new Global.FxInfo();
+                fxInfo.frameIndex = frameIndex;
+                fxInfoList.Add(fxInfo);
+            }
+            for (int i = 0; i < fxInfoList.Count; i++)
+            {
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("删除", GUILayout.Width(40)))
+                {
+                    fxInfoList.RemoveAt(i);
+                }
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("帧号"));
+                fxInfoList[i].frameIndex = EditorGUILayout.IntField("帧号", fxInfoList[i].frameIndex, GUILayout.Width(50));
+                fxInfoList[i].particleEffect = EditorGUILayout.ObjectField("特效", fxInfoList[i].particleEffect, typeof(ParticleSystem), true, GUILayout.Width(50)) as ParticleSystem;
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("  offset:"));
+                EditorGUILayout.LabelField("  offset:", GUILayout.MaxWidth(45));
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("x"));
+                fxInfoList[i].offset.x = EditorGUILayout.FloatField("x", fxInfoList[i].offset.x, GUILayout.MaxWidth(45));
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("y"));
+                fxInfoList[i].offset.y = EditorGUILayout.FloatField("y", fxInfoList[i].offset.y, GUILayout.MaxWidth(45));
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent("z"));
+                fxInfoList[i].offset.z = EditorGUILayout.FloatField("z", fxInfoList[i].offset.z, GUILayout.MaxWidth(45));
+
+                EditorGUIUtility.labelWidth = calcLabelWidth(new GUIContent(" 音效"));
+                fxInfoList[i].soundEffect = EditorGUILayout.ObjectField("音效", fxInfoList[i].soundEffect, typeof(AudioClip), true, GUILayout.MaxWidth(90)) as AudioClip;
+                if (particleFx != null)
+                {
+                    particleFx.transform.position = model.transform.position + fxInfoList[i].offset;
+                }
+                EditorGUILayout.EndHorizontal();
+            }
 
 
-            AnimationClip clip = clips[animationIndex];
+            clip = clips[animationIndex];
             // 拖动slider在Scene窗口预览动画帧
             // clip.SampleAnimation(animator.gameObject, frameTimeFloat);
             // frameTimeFloat = EditorGUILayout.Slider(frameTimeFloat, 0, clip.length);
             clip.SampleAnimation(animator.gameObject, currentFrame);
             frameIndex = EditorGUILayout.IntSlider(frameIndex, 0, (int)(clip.length * clip.frameRate - 1));
 
+            if (lastFrameSelectedIndex != frameIndex)
+            {
+                PlayFxOnCurrentFrame(frameIndex);
+            }
+
+            lastFrameSelectedIndex = frameIndex;
+
             EditorGUILayout.LabelField("动画时长：" + clip.length);
+
+            if (GUILayout.Button(playFrame ? "停止":"播放", GUILayout.Width(200)))
+            {
+                playTimer = 0;
+                playFrame = !playFrame;
+            }
+
             DrawFramesView(clip);
         }
     }
@@ -583,7 +696,7 @@ public class SkillEditorWindow : EditorWindow
             bool selected = frameIndex == i;
             // string title = "" + i;
             int id = GetFrameIndexInAttackDetectionList(i);
-            string title = string.Format("{0}\n{1}", i, IsFrameHasAttackDetection(id)? "□" : "");
+            string title = string.Format("{0}\n{1}\n{2}", i, IsFrameHasAttackDetection(id) ? "□" : "", IsFrameHasFxInfo(id) ? "Fx" : "");
 
             if (GUILayout.Button(title, selected?GUIStyles.item_select:GUIStyles.item_normal, GUILayout.Width(frameViewWidth)))
             {
@@ -637,6 +750,15 @@ public class SkillEditorWindow : EditorWindow
         return false;
     }
 
+    bool IsFrameHasFxInfo(int num)
+    {
+        foreach (var t in fxInfoList)
+        {
+            if (t.frameIndex == num) return true;
+        }
+        return false;
+    }
+
     bool IsFrameOverwriteAttackDetection(int num)
     {
         if (IsFrameHasAttackDetection(num))
@@ -644,6 +766,28 @@ public class SkillEditorWindow : EditorWindow
             return attackDetectionList[num].isOverwrite;
         }
         return false;
+    }
+
+    void PlayFxOnCurrentFrame(int num)
+    {
+        foreach (var t in fxInfoList)
+        {
+            if (t.frameIndex == num)
+            {
+                if (t.particleEffect != null)
+                {
+                    particleFx = t.particleEffect;
+                    FxPlay();
+                }
+
+                if (t.soundEffect != null)
+                {
+                    asl.clip = t.soundEffect;
+                    asl.Play();
+                }
+                return;
+            }
+        }
     }
 
     // 载入技能配置
