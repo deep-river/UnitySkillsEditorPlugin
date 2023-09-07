@@ -13,7 +13,7 @@ public class Global
         public List<int> executions = new List<int>();
     }
 
-    public class attackDetection
+    public class AttackDetection
     {
         public int frameIndex;
         public bool isOverwrite;
@@ -21,5 +21,14 @@ public class Global
         public float param1;
         public float param2;
         public Vector3 offset;
+    }
+
+    public class FxInfo
+    {
+        public int frameIndex;
+        public ParticleSystem particleEffect;
+        // public string effectID;
+        public Vector3 offset;
+        public AudioClip soundEffect;
     }
 }
